@@ -38,6 +38,7 @@
 @property (nonatomic, strong) AVCaptureConnection* audioConnection;
 @property (nonatomic, strong) AVCaptureConnection* videoConnection;
 @property (nonatomic, strong) CLLocation *lastLocation;
+@property (nonatomic) AVCaptureDevicePosition cameraPosition;
 
 @property (nonatomic, strong) KFAACEncoder *aacEncoder;
 @property (nonatomic, strong) KFH264Encoder *h264Encoder;

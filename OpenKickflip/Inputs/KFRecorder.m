@@ -29,6 +29,7 @@
     NSURL *_outputFileURL;
 }
 
+@property (nonatomic, strong) AVCaptureDeviceInput *currentVideoInput;
 @property (nonatomic) BOOL hasScreenshot;
 @property (nonatomic, strong) CLLocationManager *locationManager;
 
@@ -62,6 +63,7 @@
     _session = [[AVCaptureSession alloc] init];
     _movieWritingQueue = dispatch_queue_create("Movie Writing Queue", DISPATCH_QUEUE_SERIAL);
     _session.automaticallyConfiguresApplicationAudioSession = NO;
+    _cameraPosition = AVCaptureDevicePositionBack;
     [self setupVideoCapture];
     if ([OpenKickflip useAudio]) { [self setupAudioCapture]; }
     
@@ -142,28 +144,52 @@
     _audioConnection = [_audioOutput connectionWithMediaType:AVMediaTypeAudio];
 }
 
-- (void) setupVideoCapture {
-    NSError *error = nil;
-    AVCaptureDevice* videoDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
-    AVCaptureDeviceInput* videoInput = [AVCaptureDeviceInput deviceInputWithDevice:videoDevice error:&error];
-    if (error) {
-        DDLogError(@"Error getting video input device: %@", error.description);
+- (dispatch_queue_t)videoQueue {
+    if (!_videoQueue) {
+        _videoQueue = dispatch_queue_create("Video Capture Queue", DISPATCH_QUEUE_SERIAL);
     }
-    if ([_session canAddInput:videoInput]) {
-        [_session addInput:videoInput];
+    return _videoQueue;
+}
+
+- (void) setupVideoCapture {
+    [self.session beginConfiguration];
+    
+    if (self.currentVideoInput) {
+        [self.session removeInput:self.currentVideoInput];
+    }
+    
+    NSError *error = nil;
+    for (AVCaptureDevice *device in [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo]) {
+        if (device.position == self.cameraPosition) {
+            AVCaptureDeviceInput* videoInput = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
+            if (error) {
+                DDLogError(@"Error getting video input device: %@", error.description);
+            }
+            self.currentVideoInput = videoInput;
+            break;
+        }
+    }
+    
+    if ([self.session canAddInput:self.currentVideoInput]) {
+        [self.session addInput:self.currentVideoInput];
+    }
+    
+    if (self.videoOutput) {
+        [self.session removeOutput:self.videoOutput];
     }
     
     // create an output for YUV output with self as delegate
-    _videoQueue = dispatch_queue_create("Video Capture Queue", DISPATCH_QUEUE_SERIAL);
-    _videoOutput = [[AVCaptureVideoDataOutput alloc] init];
-    _videoOutput.videoSettings = @{ (NSString*)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA) };
-    _videoOutput.alwaysDiscardsLateVideoFrames = YES;
-    [_videoOutput setSampleBufferDelegate:self queue:_videoQueue];
-    if ([_session canAddOutput:_videoOutput]) {
-        [_session addOutput:_videoOutput];
+    self.videoOutput = [[AVCaptureVideoDataOutput alloc] init];
+    self.videoOutput.videoSettings = @{ (NSString*)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA) };
+    self.videoOutput.alwaysDiscardsLateVideoFrames = YES;
+    [self.videoOutput setSampleBufferDelegate:self queue:self.videoQueue];
+    if ([self.session canAddOutput:self.videoOutput]) {
+        [self.session addOutput:self.videoOutput];
     }
-    _videoConnection = [_videoOutput connectionWithMediaType:AVMediaTypeVideo];
-    _videoConnection.videoOrientation = [self avOrientationForInterfaceOrientation:[UIApplication sharedApplication].statusBarOrientation];
+    self.videoConnection = [self.videoOutput connectionWithMediaType:AVMediaTypeVideo];
+    self.videoConnection.videoOrientation = [self avOrientationForInterfaceOrientation:[UIApplication sharedApplication].statusBarOrientation];
+    
+    [self.session commitConfiguration];
 }
 
 - (BOOL)setupAssetWriterAudioInput:(CMFormatDescriptionRef)currentFormatDescription {
@@ -433,6 +459,14 @@
 }
 
 #pragma mark - General Utilities
+
+- (void)setCameraPosition:(AVCaptureDevicePosition)cameraPosition {
+    if (_cameraPosition != cameraPosition) {
+        _cameraPosition = cameraPosition;
+        
+        [self setupVideoCapture];
+    }
+}
 
 - (void) startRecording {
     if ([_session isRunning]) {
