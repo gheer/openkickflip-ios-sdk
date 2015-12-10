@@ -17,7 +17,7 @@
 
 @implementation LiveEncoder
 
-- (id)initWithHeight:(CGFloat)height width:(CGFloat)width bitrate:(CGFloat)bitRate {
+- (id)initWithHeight:(CGFloat)height width:(CGFloat)width bitrate:(SInt32)bitRate {
     self = [super init];
     if (self) {
         NSError *error;
@@ -28,10 +28,8 @@
         
         self.queue = dispatch_queue_create("com.Lynxus.EncoderQueue", DISPATCH_QUEUE_SERIAL);
         [self.session setDelegate:self queue:self.queue];
-        [self.session setAverageBitrate:bitRate error:&error];
-        if (error) {
-            NSLog(@"encoder error - %@", error.localizedDescription);
-        }
+        
+        [self setBitrate:bitRate average:YES];
         
         [self.session setProfileLevel:(NSString*)kVTProfileLevel_H264_Baseline_AutoLevel error:&error];
         if (error) {
@@ -57,6 +55,22 @@
     }   
     return self;
 }
+
+- (void)setBitrate:(SInt32)bitrate average:(BOOL)average {
+    NSError *error = nil;
+    if (average) {
+        [self.session setAverageBitrate:bitrate error:&error];
+        if (error) {
+            NSLog(@"encoder error - %@", error.localizedDescription);
+        }
+    } else {
+        [self.session setConstantBitrate:bitrate error:&error];
+        if (error) {
+            NSLog(@"encoder error - %@", error.localizedDescription);
+        }
+    }
+}
+
 
 - (BOOL)encodeSampleBuffer:(CMSampleBufferRef)sampleBuffer {
     return [self.session encodeSampleBuffer:sampleBuffer forceKeyframe:NO];

@@ -85,6 +85,7 @@ static void * AVEncoderContext = &AVEncoderContext;
                        context:(void *)context {
     if (context == AVEncoderContext && [keyPath isEqualToString:NSStringFromSelector(@selector(bitrate))]) {
         self.bitrateChanged = YES;
+        [self.encoder setBitrate:self.bitrate average:YES];
     }
 }
 
